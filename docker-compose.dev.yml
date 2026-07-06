@@ -1,0 +1,31 @@
+# ===========================
+# DealOS AI — Development Overrides
+# ===========================
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# Adds: hot reload, debug ports, volume mounts for live code editing.
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: development
+    volumes:
+      - ./backend/app:/app/app:cached
+      - ./backend/tests:/app/tests:cached
+      - ./backend/alembic:/app/alembic:cached
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+      - BACKEND_WORKERS=1
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --reload-dir /app/app
+      --log-level debug
+    ports:
+      - "8000:8000"
+      - "5678:5678"  # debugpy port

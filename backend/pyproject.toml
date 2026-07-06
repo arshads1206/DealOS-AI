@@ -1,0 +1,88 @@
+[project]
+name = "dealos-ai"
+version = "0.1.0"
+description = "Enterprise Investment Intelligence Operating System"
+requires-python = ">=3.12"
+
+# ===========================
+# Ruff — Linter & Formatter
+# ===========================
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["app", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "TCH",  # flake8-type-checking
+    "RUF",  # ruff-specific rules
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function calls in argument defaults (FastAPI Depends)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+# ===========================
+# Mypy — Static Type Checking
+# ===========================
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = [
+    "rank_bm25.*",
+    "minio.*",
+    "fitz.*",
+    "docx.*",
+    "pptx.*",
+    "openpyxl.*",
+]
+ignore_missing_imports = true
+
+# ===========================
+# Pytest
+# ===========================
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+markers = [
+    "unit: Unit tests (no external dependencies)",
+    "integration: Integration tests (require database/services)",
+    "api: API endpoint tests",
+    "slow: Tests that take >5s",
+]
+
+# ===========================
+# Coverage
+# ===========================
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/alembic/*", "app/__main__.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]

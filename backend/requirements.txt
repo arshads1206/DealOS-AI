@@ -1,0 +1,59 @@
+# ===========================
+# DealOS AI — Production Dependencies
+# ===========================
+
+# ── Web Framework ──
+fastapi==0.115.12
+uvicorn[standard]==0.34.3
+python-multipart==0.0.20
+
+# ── Database ──
+sqlalchemy[asyncio]==2.0.41
+asyncpg==0.30.0
+alembic==1.15.2
+pgvector==0.3.6
+
+# ── Redis ──
+redis[hiredis]==5.3.0
+
+# ── Authentication ──
+pyjwt[crypto]==2.10.1
+passlib[bcrypt]==1.7.4
+bcrypt==4.3.0
+
+# ── Validation & Serialization ──
+pydantic==2.11.3
+pydantic-settings==2.9.1
+email-validator==2.2.0
+
+# ── Object Storage ──
+minio==7.2.15
+
+# ── Document Parsing ──
+pymupdf==1.25.5
+python-docx==1.1.2
+openpyxl==3.1.5
+python-pptx==1.0.2
+pandas==2.2.3
+
+# ── AI / LLM ──
+openai==1.82.0
+langchain==0.3.25
+langchain-openai==0.3.18
+langgraph==0.4.8
+tiktoken==0.9.0
+
+# ── Embeddings & Retrieval ──
+sentence-transformers==4.1.0
+rank-bm25==0.2.2
+
+# ── ML ──
+scikit-learn==1.6.1
+xgboost==3.0.0
+numpy==2.2.6
+
+# ── Utilities ──
+httpx==0.28.1
+python-dateutil==2.9.0
+structlog==25.4.0
+tenacity==9.1.2
