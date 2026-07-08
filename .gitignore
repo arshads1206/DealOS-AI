@@ -17,6 +17,7 @@ build/
 venv/
 env/
 ENV/
+venv_311/
 
 # ===========================
 # Node.js / Frontend

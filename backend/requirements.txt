@@ -17,7 +17,7 @@ pgvector==0.3.6
 redis[hiredis]==5.3.0
 
 # ── Authentication ──
-pyjwt[crypto]==2.10.1
+pyjwt[crypto]>=2.9.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.3.0
 
