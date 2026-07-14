@@ -14,6 +14,9 @@ Node responsibilities:
 
 CRITICAL: No node performs retrieval, extraction, or document parsing.
 All intelligence work is delegated to existing services.
+
+Retry strategy: LLM calls use tenacity with exponential backoff (3 attempts).
+This handles transient OpenAI API errors without failing the entire graph.
 """
 
 import json
@@ -23,6 +26,7 @@ from uuid import UUID
 import structlog
 from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from app.ai.agents.state import GraphState
 from app.config import get_settings
@@ -40,6 +44,51 @@ def _get_openai_client() -> AsyncOpenAI | None:
     if not _settings.openai_api_key:
         return None
     return AsyncOpenAI(api_key=_settings.openai_api_key)
+
+
+# ── Retry-wrapped LLM call ──
+# Retries on any Exception (covers rate limits, timeouts, transient errors)
+# 3 attempts with exponential backoff: 1s, 2s, 4s
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=8),
+    retry=retry_if_exception_type(Exception),
+    reraise=True,
+)
+async def _llm_call(
+    client: AsyncOpenAI,
+    system_prompt: str,
+    user_prompt: str,
+    temperature: float = 0.2,
+    response_format: dict | None = None,
+) -> str:
+    """
+    Retry-wrapped LLM call with exponential backoff.
+
+    Args:
+        client: AsyncOpenAI client.
+        system_prompt: System message.
+        user_prompt: User message.
+        temperature: Sampling temperature.
+        response_format: Optional response format (e.g., json_object).
+
+    Returns:
+        The LLM's response content string.
+    """
+    kwargs = {
+        "model": _settings.openai_model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": temperature,
+    }
+    if response_format:
+        kwargs["response_format"] = response_format
+
+    response = await client.chat.completions.create(**kwargs)
+    return response.choices[0].message.content or ""
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -110,18 +159,15 @@ async def planner_node(state: GraphState, session: AsyncSession) -> dict:
             question=question,
         )
 
-        response = await client.chat.completions.create(
-            model=_settings.openai_model,
-            messages=[
-                {"role": "system", "content": "You are an investment analysis routing AI. Return only JSON."},
-                {"role": "user", "content": prompt},
-            ],
+        raw = await _llm_call(
+            client=client,
+            system_prompt="You are an investment analysis routing AI. Return only JSON.",
+            user_prompt=prompt,
             temperature=0.1,
             response_format={"type": "json_object"},
         )
 
-        raw = response.choices[0].message.content or "{}"
-        parsed = json.loads(raw)
+        parsed = json.loads(raw or "{}")
         agents = parsed.get("agents", ["financial", "risk", "company"])
 
         # Validate agent names
@@ -191,6 +237,7 @@ async def financial_node(state: GraphState, session: AsyncSession) -> dict:
 
     Reuses FinancialAnalysisService — never retrieves documents directly.
     If no stored metrics exist, triggers extraction lazily.
+    Uses tenacity retry on LLM summarization calls.
     """
     start = time.time()
     company_id = UUID(state["company_id"])
@@ -219,32 +266,29 @@ async def financial_node(state: GraphState, session: AsyncSession) -> dict:
         else:
             metrics_text = "No financial metrics available for this company."
 
-        # Generate analyst summary via LLM
+        # Generate analyst summary via LLM (with retry)
         client = _get_openai_client()
         if client and result.metrics:
             prompt = FINANCIAL_SUMMARY_PROMPT.format(
                 question=question,
                 data=metrics_text,
             )
-            response = await client.chat.completions.create(
-                model=_settings.openai_model,
-                messages=[
-                    {"role": "system", "content": "You are a senior financial analyst at an investment bank."},
-                    {"role": "user", "content": prompt},
-                ],
+            summary = await _llm_call(
+                client=client,
+                system_prompt="You are a senior financial analyst at an investment bank.",
+                user_prompt=prompt,
                 temperature=0.2,
             )
-            summary = response.choices[0].message.content or metrics_text
         else:
             summary = metrics_text
 
         duration_ms = int((time.time() - start) * 1000)
         logger.info("financial_node_complete", duration_ms=duration_ms, metrics_count=len(result.metrics))
 
-        existing_traces = state.get("agent_traces", [])
+        # With Annotated[list, operator.add] reducer, just return the new entries
         return {
             "financial_result": summary,
-            "agent_traces": existing_traces + [
+            "agent_traces": [
                 {
                     "name": "financial",
                     "status": "completed",
@@ -257,12 +301,10 @@ async def financial_node(state: GraphState, session: AsyncSession) -> dict:
     except Exception as e:
         duration_ms = int((time.time() - start) * 1000)
         logger.error("financial_node_error", error=str(e))
-        existing_traces = state.get("agent_traces", [])
-        existing_errors = state.get("errors", [])
         return {
             "financial_result": f"Financial analysis encountered an error: {str(e)}",
-            "errors": existing_errors + [f"Financial agent error: {str(e)}"],
-            "agent_traces": existing_traces + [
+            "errors": [f"Financial agent error: {str(e)}"],
+            "agent_traces": [
                 {
                     "name": "financial",
                     "status": "error",
@@ -305,6 +347,7 @@ async def risk_node(state: GraphState, session: AsyncSession) -> dict:
 
     Reuses RiskAnalysisService — never retrieves documents directly.
     If no stored risks exist, triggers extraction lazily.
+    Uses tenacity retry on LLM summarization calls.
     """
     start = time.time()
     company_id = UUID(state["company_id"])
@@ -341,7 +384,7 @@ async def risk_node(state: GraphState, session: AsyncSession) -> dict:
             risks_text = "No risk findings available for this company."
             severity_text = "N/A"
 
-        # Generate analyst summary
+        # Generate analyst summary (with retry)
         client = _get_openai_client()
         if client and result.risks:
             prompt = RISK_SUMMARY_PROMPT.format(
@@ -349,25 +392,21 @@ async def risk_node(state: GraphState, session: AsyncSession) -> dict:
                 data=risks_text,
                 severity=severity_text,
             )
-            response = await client.chat.completions.create(
-                model=_settings.openai_model,
-                messages=[
-                    {"role": "system", "content": "You are a senior risk analyst at an investment bank."},
-                    {"role": "user", "content": prompt},
-                ],
+            summary = await _llm_call(
+                client=client,
+                system_prompt="You are a senior risk analyst at an investment bank.",
+                user_prompt=prompt,
                 temperature=0.2,
             )
-            summary = response.choices[0].message.content or risks_text
         else:
             summary = risks_text
 
         duration_ms = int((time.time() - start) * 1000)
         logger.info("risk_node_complete", duration_ms=duration_ms, risks_count=len(result.risks))
 
-        existing_traces = state.get("agent_traces", [])
         return {
             "risk_result": summary,
-            "agent_traces": existing_traces + [
+            "agent_traces": [
                 {
                     "name": "risk",
                     "status": "completed",
@@ -380,12 +419,10 @@ async def risk_node(state: GraphState, session: AsyncSession) -> dict:
     except Exception as e:
         duration_ms = int((time.time() - start) * 1000)
         logger.error("risk_node_error", error=str(e))
-        existing_traces = state.get("agent_traces", [])
-        existing_errors = state.get("errors", [])
         return {
             "risk_result": f"Risk analysis encountered an error: {str(e)}",
-            "errors": existing_errors + [f"Risk agent error: {str(e)}"],
-            "agent_traces": existing_traces + [
+            "errors": [f"Risk agent error: {str(e)}"],
+            "agent_traces": [
                 {
                     "name": "risk",
                     "status": "error",
@@ -424,6 +461,7 @@ async def company_node(state: GraphState, session: AsyncSession) -> dict:
 
     Reuses CompanyAnalysisService — never retrieves documents directly.
     If no stored profile exists, triggers extraction lazily.
+    Uses tenacity retry on LLM summarization calls.
     """
     start = time.time()
     company_id = UUID(state["company_id"])
@@ -463,32 +501,28 @@ async def company_node(state: GraphState, session: AsyncSession) -> dict:
 
         profile_text = "\n".join(profile_parts) if profile_parts else "No company profile available."
 
-        # Generate analyst summary
+        # Generate analyst summary (with retry)
         client = _get_openai_client()
         if client and profile_parts:
             prompt = COMPANY_SUMMARY_PROMPT.format(
                 question=question,
                 data=profile_text,
             )
-            response = await client.chat.completions.create(
-                model=_settings.openai_model,
-                messages=[
-                    {"role": "system", "content": "You are a senior business analyst at an investment bank."},
-                    {"role": "user", "content": prompt},
-                ],
+            summary = await _llm_call(
+                client=client,
+                system_prompt="You are a senior business analyst at an investment bank.",
+                user_prompt=prompt,
                 temperature=0.3,
             )
-            summary = response.choices[0].message.content or profile_text
         else:
             summary = profile_text
 
         duration_ms = int((time.time() - start) * 1000)
         logger.info("company_node_complete", duration_ms=duration_ms)
 
-        existing_traces = state.get("agent_traces", [])
         return {
             "company_result": summary,
-            "agent_traces": existing_traces + [
+            "agent_traces": [
                 {
                     "name": "company",
                     "status": "completed",
@@ -501,12 +535,10 @@ async def company_node(state: GraphState, session: AsyncSession) -> dict:
     except Exception as e:
         duration_ms = int((time.time() - start) * 1000)
         logger.error("company_node_error", error=str(e))
-        existing_traces = state.get("agent_traces", [])
-        existing_errors = state.get("errors", [])
         return {
             "company_result": f"Company analysis encountered an error: {str(e)}",
-            "errors": existing_errors + [f"Company agent error: {str(e)}"],
-            "agent_traces": existing_traces + [
+            "errors": [f"Company agent error: {str(e)}"],
+            "agent_traces": [
                 {
                     "name": "company",
                     "status": "error",
@@ -576,6 +608,7 @@ async def committee_node(state: GraphState, session: AsyncSession) -> dict:
 
     This is the final node — it combines financial, risk, and company
     summaries into a structured investment committee output.
+    Uses tenacity retry on LLM synthesis calls.
     """
     start = time.time()
     question = state.get("question", "")
@@ -603,11 +636,10 @@ async def committee_node(state: GraphState, session: AsyncSession) -> dict:
             f"## Company Profile\n{company}\n\n"
             f"Note: Investment Committee synthesis unavailable (no OpenAI key)."
         )
-        existing_traces = state.get("agent_traces", [])
         return {
             "committee_result": fallback,
             "confidence": 0.0,
-            "agent_traces": existing_traces + [
+            "agent_traces": [
                 {
                     "name": "committee",
                     "status": "completed",
@@ -626,20 +658,15 @@ async def committee_node(state: GraphState, session: AsyncSession) -> dict:
             question=question,
         )
 
-        response = await client.chat.completions.create(
-            model=_settings.openai_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are the Investment Committee of a top-tier PE firm. "
-                               "Be rigorous, evidence-based, and never hallucinate.",
-                },
-                {"role": "user", "content": prompt},
-            ],
+        result = await _llm_call(
+            client=client,
+            system_prompt=(
+                "You are the Investment Committee of a top-tier PE firm. "
+                "Be rigorous, evidence-based, and never hallucinate."
+            ),
+            user_prompt=prompt,
             temperature=0.3,
         )
-
-        result = response.choices[0].message.content or ""
 
         # Extract confidence score from the response
         confidence = _extract_confidence(result)
@@ -647,11 +674,10 @@ async def committee_node(state: GraphState, session: AsyncSession) -> dict:
         duration_ms = int((time.time() - start) * 1000)
         logger.info("committee_node_complete", duration_ms=duration_ms, confidence=confidence)
 
-        existing_traces = state.get("agent_traces", [])
         return {
             "committee_result": result,
             "confidence": confidence,
-            "agent_traces": existing_traces + [
+            "agent_traces": [
                 {
                     "name": "committee",
                     "status": "completed",
@@ -664,13 +690,11 @@ async def committee_node(state: GraphState, session: AsyncSession) -> dict:
     except Exception as e:
         duration_ms = int((time.time() - start) * 1000)
         logger.error("committee_node_error", error=str(e))
-        existing_traces = state.get("agent_traces", [])
-        existing_errors = state.get("errors", [])
         return {
             "committee_result": f"Investment Committee synthesis failed: {str(e)}",
             "confidence": 0.0,
-            "errors": existing_errors + [f"Committee error: {str(e)}"],
-            "agent_traces": existing_traces + [
+            "errors": [f"Committee error: {str(e)}"],
+            "agent_traces": [
                 {
                     "name": "committee",
                     "status": "error",

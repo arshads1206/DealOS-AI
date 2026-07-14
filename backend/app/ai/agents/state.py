@@ -9,9 +9,14 @@ Design decisions:
 - Specialist results are strings: LLM-generated summaries, not raw DB models.
   The DB models are consumed internally by the node and converted to prose.
 - `messages` stores conversation history for multi-turn memory.
+- `Annotated` with `operator.add`: List fields (errors, agent_traces) use
+  reducer annotations so parallel fan-out nodes ACCUMULATE rather than
+  overwrite each other's entries. This is critical for LangGraph parallel
+  execution where financial, risk, and company nodes run concurrently.
 """
 
-from typing import TypedDict
+import operator
+from typing import Annotated, TypedDict
 
 
 class GraphState(TypedDict, total=False):
@@ -20,6 +25,10 @@ class GraphState(TypedDict, total=False):
 
     Each node reads what it needs and writes its output field.
     The state accumulates results as it traverses the graph.
+
+    Fields with `Annotated[..., operator.add]` use LangGraph's reducer
+    pattern: when parallel nodes both write to the same list field,
+    their entries are concatenated instead of overwritten.
     """
 
     # ── Input ──
@@ -42,6 +51,6 @@ class GraphState(TypedDict, total=False):
     # ── Conversation Memory ──
     messages: list[dict]       # [{role, content}] for multi-turn context
 
-    # ── Observability ──
-    errors: list[str]          # Errors encountered during execution
-    agent_traces: list[dict]   # [{name, status, duration_ms, summary}]
+    # ── Observability (reducer: accumulate across parallel nodes) ──
+    errors: Annotated[list[str], operator.add]
+    agent_traces: Annotated[list[dict], operator.add]
