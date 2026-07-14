@@ -31,7 +31,7 @@ async def health_check():
 
 # ── Route Registration ──
 
-from app.api.v1 import auth, users, companies, documents, search, analysis  # noqa: E402
+from app.api.v1 import auth, users, companies, documents, search, analysis, chat  # noqa: E402
 
 router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 router.include_router(users.router, prefix="/users", tags=["Users"])
@@ -39,3 +39,5 @@ router.include_router(companies.router, prefix="/companies", tags=["Companies"])
 router.include_router(documents.router, prefix="/documents", tags=["Documents"])
 router.include_router(search.router, prefix="/search", tags=["Search"])
 router.include_router(analysis.router, prefix="/analysis", tags=["Analysis"])
+router.include_router(chat.router, prefix="/chat", tags=["Chat"])
+
