@@ -1,4 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
+import { PremiumCursor } from "@/components/ui/PremiumCursor";
 import { AppShell } from "@/components/layout/AppShell";
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
 import { CompaniesPage } from "@/features/companies/CompaniesPage";
@@ -24,37 +26,40 @@ import { AuthPage } from "@/features/auth/AuthPage";
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<AuthPage />} />
-        <Route element={<AppShell />}>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/companies" element={<CompaniesPage />} />
-          <Route path="/companies/:id" element={<CompanyWorkspacePage />}>
-            <Route index element={<Navigate to="overview" replace />} />
-            <Route path="overview" element={<OverviewTab />} />
-            <Route path="documents" element={<DocumentsTab />} />
-            <Route path="financials" element={<FinancialsTab />} />
-            <Route path="risks" element={<RisksTab />} />
-            <Route path="ai-analyst" element={<AIAnalystTab />} />
-            <Route path="reports" element={<ReportsTab />} />
-            <Route path="timeline" element={<TimelineTab />} />
-            <Route path="activity" element={<ActivityTab />} />
+    <ErrorBoundary>
+      <PremiumCursor />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<AuthPage />} />
+          <Route element={<AppShell />}>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/companies" element={<CompaniesPage />} />
+            <Route path="/companies/:id" element={<CompanyWorkspacePage />}>
+              <Route index element={<Navigate to="overview" replace />} />
+              <Route path="overview" element={<OverviewTab />} />
+              <Route path="documents" element={<DocumentsTab />} />
+              <Route path="financials" element={<FinancialsTab />} />
+              <Route path="risks" element={<RisksTab />} />
+              <Route path="ai-analyst" element={<AIAnalystTab />} />
+              <Route path="reports" element={<ReportsTab />} />
+              <Route path="timeline" element={<TimelineTab />} />
+              <Route path="activity" element={<ActivityTab />} />
+            </Route>
+            <Route path="/search" element={<SearchPage />} />
+            <Route path="/documents" element={<DocumentLibraryPage />} />
+            <Route path="/reports" element={<InvestmentReportsPage />} />
+            <Route path="/financial-analysis" element={<FinancialAnalysisPage />} />
+            <Route path="/risk-analysis" element={<RiskAnalysisPage />} />
+            <Route path="/ai-analyst" element={<Navigate to="/companies" replace />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="/admin" element={<AdminPage />} />
           </Route>
-          <Route path="/search" element={<SearchPage />} />
-          <Route path="/documents" element={<DocumentLibraryPage />} />
-          <Route path="/reports" element={<InvestmentReportsPage />} />
-          <Route path="/financial-analysis" element={<FinancialAnalysisPage />} />
-          <Route path="/risk-analysis" element={<RiskAnalysisPage />} />
-          <Route path="/ai-analyst" element={<Navigate to="/companies" replace />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/notifications" element={<NotificationsPage />} />
-          <Route path="/admin" element={<AdminPage />} />
-        </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 

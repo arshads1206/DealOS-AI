@@ -40,10 +40,10 @@ export function PageContainer({ children }: { children: ReactNode }) {
 export function Reveal({ children, delay = 0 }: { children: ReactNode; delay?: number }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-60px" }}
-      transition={{ duration: 0.55, delay, ease: [0.16, 1, 0.3, 1] }}
+      initial={{ opacity: 0, y: 8, scale: 0.99 }}
+      whileInView={{ opacity: 1, y: 0, scale: 1 }}
+      viewport={{ once: true, margin: "-20px" }}
+      transition={{ duration: 0.4, delay, ease: [0.25, 0.1, 0.25, 1] }}
     >
       {children}
     </motion.div>

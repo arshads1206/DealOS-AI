@@ -46,6 +46,10 @@ export function Badge({
   );
 }
 
+export function StatusDot({ tone }: { tone: Tone }) {
+  return <span className={cn("mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full", dotTones[tone])} />;
+}
+
 const severityTone: Record<string, Tone> = {
   low: "ice",
   medium: "amber",

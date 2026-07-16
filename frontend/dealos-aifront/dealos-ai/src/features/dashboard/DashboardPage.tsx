@@ -1,9 +1,11 @@
 import { PageHeader, PageContainer, Reveal } from "@/components/layout/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { GlassCard } from "@/components/ui/GlassCard";
-import { Badge, SeverityBadge } from "@/components/ui/Badge";
+import { Badge, SeverityBadge, StatusDot } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Divider } from "@/components/ui/Divider";
+import { ListRow } from "@/components/ui/ListRow";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { AumTrendChart } from "@/components/charts/AumTrendChart";
 import { RiskHeatmap } from "@/components/charts/RiskHeatmap";
 import {
@@ -39,6 +41,8 @@ const kindIcon: Record<string, string> = {
 
 export function DashboardPage() {
   const criticalRisks = risks.filter((r) => r.severity === "critical" && r.status === "open");
+  const isLoading = false;
+  const isUploading = false;
 
   return (
     <PageContainer>
@@ -48,10 +52,10 @@ export function DashboardPage() {
         description="Four active diligence workstreams, two critical risks surfaced overnight, and one report awaiting your sign-off."
         actions={
           <>
-            <Button variant="secondary" size="md">
+            <Button variant="secondary" size="md" loading={isUploading} aria-label="Upload document">
               <Upload size={15} /> Upload document
             </Button>
-            <Button variant="primary" size="md">
+            <Button variant="primary" size="md" aria-label="New workspace">
               <Plus size={15} /> New workspace
             </Button>
           </>
@@ -96,8 +100,16 @@ export function DashboardPage() {
                 </Link>
               </div>
               <Divider />
-              <div>
-                {companies.slice(0, 5).map((c, i) => (
+              <div className="overflow-x-auto">
+                <div className="min-w-[600px]">
+                  {isLoading ? (
+                    <div className="p-6 space-y-4">
+                      <Skeleton className="h-10 w-full" />
+                      <Skeleton className="h-10 w-full" />
+                      <Skeleton className="h-10 w-full" />
+                    </div>
+                  ) : (
+                    companies.slice(0, 5).map((c, i) => (
                   <Link
                     to={`/companies/${c.id}`}
                     key={c.id}
@@ -124,7 +136,8 @@ export function DashboardPage() {
                       </Badge>
                     </div>
                   </Link>
-                ))}
+                )))}
+                </div>
               </div>
             </GlassCard>
           </Reveal>
@@ -172,20 +185,30 @@ export function DashboardPage() {
             <GlassCard className="p-5" raised>
               <p className="font-display text-base text-[var(--color-ink-0)] mb-4">Recent Activity</p>
               <div className="space-y-4">
-                {activity.slice(0, 6).map((a) => (
-                  <div key={a.id} className="flex gap-3">
-                    <span className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-gold-500)]/[0.1] text-[10px] text-[var(--color-gold-400)]">
-                      {kindIcon[a.kind]}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-[13px] text-[var(--color-ink-1)] leading-snug">
-                        <span className="text-[var(--color-ink-0)] font-medium">{a.actor}</span> {a.action}{" "}
-                        <span className="text-[var(--color-ink-0)]">{a.target}</span>
-                      </p>
-                      <p className="text-[11px] text-[var(--color-ink-4)] mt-0.5 font-mono">{a.timestamp}</p>
-                    </div>
-                  </div>
-                ))}
+                {isLoading ? (
+                  <>
+                    <Skeleton className="h-12 w-full" />
+                    <Skeleton className="h-12 w-full" />
+                  </>
+                ) : (
+                  activity.slice(0, 6).map((a) => (
+                    <ListRow
+                      key={a.id}
+                      icon={
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-gold-500)]/[0.1] text-[10px] text-[var(--color-gold-400)]">
+                          {kindIcon[a.kind]}
+                        </span>
+                      }
+                      title={
+                        <>
+                          <span className="text-[var(--color-ink-0)] font-medium">{a.actor}</span> {a.action}{" "}
+                          <span className="text-[var(--color-ink-0)]">{a.target}</span>
+                        </>
+                      }
+                      subtitle={a.timestamp}
+                    />
+                  ))
+                )}
               </div>
             </GlassCard>
           </Reveal>
@@ -199,15 +222,22 @@ export function DashboardPage() {
                 </Link>
               </div>
               <div className="space-y-3">
-                {reports.slice(0, 3).map((r) => (
-                  <div key={r.id} className="flex items-start gap-2.5">
-                    <FileText size={14} className="mt-0.5 text-[var(--color-ink-4)] shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-[13px] text-[var(--color-ink-1)] leading-snug truncate">{r.title}</p>
-                      <p className="text-[11px] text-[var(--color-ink-4)] font-mono mt-0.5">{r.date}</p>
-                    </div>
-                  </div>
-                ))}
+                {isLoading ? (
+                  <>
+                    <Skeleton className="h-12 w-full" />
+                    <Skeleton className="h-12 w-full" />
+                  </>
+                ) : (
+                  reports.slice(0, 3).map((r) => (
+                    <ListRow
+                      key={r.id}
+                      icon={<FileText size={14} className="text-[var(--color-ink-4)]" />}
+                      title={r.title}
+                      subtitle={r.date}
+                      href={`/reports`}
+                    />
+                  ))
+                )}
               </div>
             </GlassCard>
           </Reveal>
@@ -219,20 +249,10 @@ export function DashboardPage() {
 
 function InsightRow({ tone, text, href }: { tone: "crimson" | "amber" | "emerald"; text: string; href: string }) {
   return (
-    <Link to={href} className="group block">
-      <motion.div whileHover={{ x: 2 }} className="flex items-start gap-2.5 rounded-lg p-2 -mx-2 hover:bg-white/[0.03] transition-colors">
-        <SeverityBadgeDot tone={tone} />
-        <p className="text-[13px] leading-snug text-[var(--color-ink-1)] group-hover:text-[var(--color-ink-0)] transition-colors">{text}</p>
-      </motion.div>
-    </Link>
+    <ListRow
+      href={href}
+      icon={<StatusDot tone={tone} />}
+      title={text}
+    />
   );
-}
-
-function SeverityBadgeDot({ tone }: { tone: "crimson" | "amber" | "emerald" }) {
-  const colors = {
-    crimson: "bg-[var(--color-crimson)]",
-    amber: "bg-[var(--color-amber)]",
-    emerald: "bg-[var(--color-emerald)]",
-  };
-  return <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${colors[tone]}`} />;
 }

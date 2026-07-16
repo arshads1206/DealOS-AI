@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("database_connected", host=settings.postgres_host)
     except Exception as e:
         logger.error("database_connection_failed", error=str(e))
-        raise
+        raise 
 
     yield  # Application runs here
 
